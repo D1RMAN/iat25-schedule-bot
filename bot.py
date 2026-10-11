@@ -168,26 +168,32 @@ def week_emoji(week_type):
 # ФОРМАТИРОВАНИЕ ПАРЫ
 # ============================================================
 
+
 def format_lesson(item):
+    lesson_times = {
+        1: ("08:30", "10:00"),
+        2: ("10:00", "11:30"),
+        3: ("12:00", "13:30"),
+        4: ("13:50", "15:20"),
+    }
 
     if item.number == 0:
         return f"📚 <b>{item.subject}</b>"
 
-    result = (
-        f"<b>{item.number}. {item.subject}</b>"
-    )
+    result = f"<b>{item.number}. {item.subject}</b>"
+
+    if item.number in lesson_times:
+        start, end = lesson_times[item.number]
+        result += f"\n   🕒 {start}–{end}"
 
     if item.teacher:
-        result += (
-            f"\n   👨‍🏫 {item.teacher}"
-        )
+        result += f"\n   👨‍🏫 {item.teacher}"
 
     if item.room:
-        result += (
-            f"\n   🚪 ауд. {item.room}"
-        )
+        result += f"\n   🚪 ауд. {item.room}"
 
     return result
+
 
 
 # ============================================================
@@ -269,32 +275,33 @@ def build_day_message(target_date):
 # РАСПИСАНИЕ НА НЕДЕЛЮ
 # ============================================================
 
+
 def build_week_message(start_date):
 
     week_type = get_week_type(start_date)
-
     end_date = start_date + timedelta(days=6)
 
     text = ""
-
     text += "📚 <b>РАСПИСАНИЕ НА НЕДЕЛЮ</b>\n\n"
-
     text += (
         f"{week_emoji(week_type)} "
         f"<b>{week_type.upper()} НЕДЕЛЯ</b>\n"
     )
-
     text += (
-        f"📅 "
-        f"{start_date.strftime('%d.%m.%Y')}"
-        f" — "
-        f"{end_date.strftime('%d.%m.%Y')}\n\n"
+        f"📅 {start_date.strftime('%d.%m.%Y')}"
+        f" — {end_date.strftime('%d.%m.%Y')}\n\n"
     )
+
+    lesson_times = {
+        1: ("08:30", "10:00"),
+        2: ("10:00", "11:30"),
+        3: ("12:00", "13:30"),
+        4: ("13:50", "15:20"),
+    }
 
     for i in range(7):
 
         target = start_date + timedelta(days=i)
-
         weekday = get_weekday_name(target)
 
         text += (
@@ -305,20 +312,11 @@ def build_week_message(start_date):
         lessons = get_lessons(target)
 
         if not lessons:
-
             text += "— занятий нет\n\n"
-
             continue
 
-        if (
-            len(lessons) == 1
-            and lessons[0].number == 0
-        ):
-
-            text += (
-                f"📚 {lessons[0].subject}\n\n"
-            )
-
+        if len(lessons) == 1 and lessons[0].number == 0:
+            text += f"📚 {lessons[0].subject}\n\n"
             continue
 
         has_lessons = False
@@ -330,25 +328,26 @@ def build_week_message(start_date):
 
             has_lessons = True
 
-            text += (
-                f"{item.number}. "
-                f"{item.subject}"
-            )
+            text += f"{item.number}. {item.subject}"
+
+            if item.number in lesson_times:
+                start, end = lesson_times[item.number]
+                text += f" ({start}–{end})"
 
             if item.room:
-                text += (
-                    f" — {item.room}"
-                )
+                text += f" — {item.room}"
 
             text += "\n"
 
         if not has_lessons:
-
             text += "— занятий нет\n"
 
         text += "\n"
 
     return text.rstrip()
+
+
+           
 
 
 # ============================================================
