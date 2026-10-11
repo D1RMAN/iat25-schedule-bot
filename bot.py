@@ -100,6 +100,9 @@ MAIN_KEYBOARD = [
         KeyboardButton("🔎 Выбрать дату"),
     ],
     [
+        KeyboardButton("⏭ Следующая пара"),
+    ],
+    [
         KeyboardButton("ℹ️ Помощь"),
     ],
 ]
@@ -121,6 +124,136 @@ def get_main_keyboard():
 def now():
 
     return datetime.now(TZ)
+# ============================================================
+# ПОИСК БЛИЖАЙШЕЙ ПАРЫ
+# ============================================================
+
+LESSON_START_TIMES = {
+    1: "08:30",
+    2: "10:00",
+    3: "12:00",
+    4: "13:50",
+}
+
+
+def find_next_lesson(current=None):
+    """
+    Возвращает ближайшую ещё не начавшуюся пару:
+    (дата, пара, время начала).
+    Если пар в ближайшие 14 дней нет — возвращает None.
+    """
+
+    if current is None:
+        current = now()
+
+    today = current.date()
+
+    for day_offset in range(14):
+        target_date = today + timedelta(days=day_offset)
+        lessons = get_lessons(target_date)
+
+        # Сначала рассматриваем пары по порядку
+        lessons = sorted(lessons, key=lambda item: item.number)
+
+        for item in lessons:
+            # Нулевые номера и служебные записи не являются парами
+            if item.number not in LESSON_START_TIMES:
+                continue
+
+            if item.subject.strip().lower() == "нет занятий":
+                continue
+
+            start_time = datetime.strptime(
+                LESSON_START_TIMES[item.number],
+                "%H:%M",
+            ).time()
+
+            start_datetime = datetime.combine(
+                target_date,
+                start_time,
+                tzinfo=TZ,
+            )
+
+            # Показываем только пары, которые ещё не начались
+            if start_datetime > current:
+                return target_date, item, start_datetime
+
+    return None
+
+
+def format_time_until(start_datetime, current=None):
+    """Форматирует оставшееся время до пары."""
+
+    if current is None:
+        current = now()
+
+    seconds = max(
+        0,
+        int((start_datetime - current).total_seconds()),
+    )
+
+    if seconds < 60:
+        return "менее минуты"
+
+    minutes = seconds // 60
+    days, remainder = divmod(minutes, 24 * 60)
+    hours, minutes = divmod(remainder, 60)
+
+    parts = []
+
+    if days:
+        parts.append(f"{days} дн.")
+
+    if hours:
+        parts.append(f"{hours} ч.")
+
+    if minutes:
+        parts.append(f"{minutes} мин.")
+
+    return " ".join(parts)
+
+
+async def show_next_lesson(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    """Отправляет пользователю информацию о следующей паре."""
+
+    current = now()
+    result = find_next_lesson(current)
+
+    if result is None:
+        await update.effective_message.reply_text(
+            "📚 Не удалось найти пары в расписании "
+            "на ближайшие 14 дней.",
+            reply_markup=get_main_keyboard(),
+        )
+        return
+
+    target_date, item, start_datetime = result
+    weekday = get_weekday_name(target_date)
+
+    text = (
+        "⏭ <b>СЛЕДУЮЩАЯ ПАРА</b>\n\n"
+        f"📅 {format_date(target_date)} — {weekday}\n\n"
+        f"📚 <b>{item.subject}</b>\n"
+        f"🔢 Номер пары: {item.number}\n"
+        f"🕒 Начало: {start_datetime.strftime('%H:%M')}\n"
+        f"⏳ До начала: "
+        f"{format_time_until(start_datetime, current)}"
+    )
+
+    if item.teacher:
+        text += f"\n👨‍🏫 Преподаватель: {item.teacher}"
+
+    if item.room:
+        text += f"\n🚪 Аудитория: {item.room}"
+
+    await update.effective_message.reply_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=get_main_keyboard(),
+    )
 
 
 # ============================================================
@@ -449,6 +582,10 @@ async def show_help(
 🔎 <b>Выбрать дату</b>
 Позволяет посмотреть расписание на любую дату.
 
+⏭ <b>Следующая пара</b>
+Показывает ближайшую ещё не начавшуюся пару,
+время до её начала, преподавателя и аудиторию.
+
 Также работают команды:
 
 /today
@@ -456,6 +593,7 @@ async def show_help(
 /day 12.10
 /week
 /next
+/nextlesson
 """
 
     await update.message.reply_text(
@@ -721,6 +859,14 @@ async def text_handler(
         )
         return
 
+    if text == "⏭ Следующая пара":
+
+        await show_next_lesson(
+            update,
+            context
+        )
+        return
+
     if text == "🔎 Выбрать дату":
 
         await ask_date(
@@ -939,6 +1085,15 @@ async def next_command(
         context
     )
 
+async def next_lesson_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    await show_next_lesson(
+        update,
+        context
+    )
+
 
 # ============================================================
 # ОБРАБОТКА ОШИБОК
@@ -1042,6 +1197,13 @@ def main():
             next_command
         )
     )
+
+    application.add_handler(
+        CommandHandler(
+            "nextlesson",
+            next_lesson_command
+    )
+)
 
     # Текст / кнопки
     application.add_handler(
